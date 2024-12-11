@@ -1,0 +1,189 @@
+1. Initial System Setup and Package Updates
+#Steps After Installation: 
+#Check for updates
+sudo dnf update -y
+
+
+
+2. Install and configure the web server (Apache)
+#Install Apache
+sudo dnf install httpd -y
+
+#Enable and start Apache (if not already)
+sudo systemctl status httpd
+sudo systemctl enable httpd
+sudo systemctl start httpd
+#Test Apache: Open a web brower and go to http://<your-server-ip>
+
+#Ensure the VM is using bridged networking or has a static IP address that is accessible from you local machine
+#In my instance, I am using a bridged network
+#How to check your network information: 
+ip a
+
+#If you are experiencing issues, it could be caused by a few different things: 
+#SELinux is blocking Apache
+#You can temporarily set SELinux to permissive mode to check if that is the issue:
+sudo setenforce 0
+
+#If that fixes the issue, you can adjust SELinux settings to allow Apache by running: 
+sudo setsebool -P httpd_can_network_connect on
+sudo restorecon -Rv /var/www
+
+#You can also check the Apache logs for more inforamtion
+#Error logs: /var/log/httpd/error_log
+#Access logs: /var/log/httpd/access_log
+
+
+
+3. Hardening the Web Server
+#Secure the Apache Configuration: 
+#Something that you can do to improve security is edit the Apache config
+cd /etc/httpd/conf/
+sudo vi httpd.conf
+
+#In vi, press i on your keyboard to make changes
+#Optional changes include:
+#Disable directory listings
+#Disabling directory listing in Apache is a security measure to prevent users from viewing the contents of directories on your web #server when there is no default file (e.g., index.html or index.php) present in that directory. If directory listing is enabled, #Apache will generate and display an auto-indexed page showing the files and subdirectories within the directory.
+Options -Indexes
+
+#Hide Apache version info
+#At the bottom of the page, enter: 
+ServerTokens Prod
+ServerSignature Off
+
+#Install mod_security and its dependencies(Optional)
+#ModSecurity is a powerful open-source web application firewall (WAF) that can be used with Apache to protect your #web #applications from a wide range of attacks, including SQL injection, XSS, and more.
+sudo dnf install mod_security mod_security_crs -y
+
+#Verify mod_security has been installed
+ls /etc/httpd/conf.modules.d/ | grep security
+
+#Enable mod_security
+#This should have been completed during installation but can be checked by looking in /etc/httpd/conf.d/ for the #mod_security.conf file
+#Edit the file to enable the module
+sudo vi /etc/httpd/conf.d/mod_security.conf
+
+#Look for the SecRuleEngine and ensure it is set to On
+
+#Enable Core Rule Set(CRS)
+#Create a symbolic link to the CRS config file in the Apache config directory
+sudo ln -s /usr/share/mod_security-crs/crs-setup.conf.example /etc/httpd/conf.d/crs-setup.conf
+
+#Include the CRS rules in your Apache configuration. Open the mod_security.conf file and add the following lines:
+sudo vi /etc/httpd/conf.d/mod_security.conf
+IncludeOptional /usr/share/mod_security-crs/*.conf
+IncludeOptional /usr/share/mod_security-crs/rules/*.conf
+
+#Restart Apache
+sudo systemctl restart httpd
+
+#Check logs to verify ModSecurity is Enabled
+sudo tail -f /var/log/httpd/modsec_audit.log
+#Open up the webserver on your local machine and you should see logs generate
+
+#Install SSL certificates for encrypted communication 
+#To create self-signed certificates (for testing): 
+sudo dnf install mod_ssl -y
+sudo apachectl configtest
+
+#If you get an error regarding the FQDN, you will need to set your host name: 
+sudo hostnamectl set-hostname yourdomain.com
+
+#Verify hostname: 
+hostname
+
+#Edit /etc/hosts file (optional)
+sudo vi /etc/hosts
+Example: 192.168.1.100 yourdomain.com yourhostname
+
+
+
+4. System Logging Configuration
+#Ensure the rsyslog is installed and enabled on your system
+sudo systemctl status rsyslog
+
+#Ensure the auditd is installed and enabled on your system
+sudo systemctl status auditd
+#Audit logs will be stored in /var/log/audit/audit.log
+
+#You can configure log rotation to prevent logs from growing too large. This config can be found in /etc/logrotate.conf
+sudo vi /etc/logrotate.conf:
+
+
+
+5. Performance Monitoring
+#Install and Configure sysstat
+#Install sysstat for performance monitoring tools like sar: 
+sudo dnf install sysstat -y
+#Enable sysstat:
+sudo systemctl enable sysstat
+sudo systemctl start sysstat
+
+#Install htop and iotop
+sudo dnf install iotop
+sudo dnf install epel-release
+sudo dnf install htop
+#You can use top to check CPU and memory usage, and iotop for disk IO
+
+#Monitor Apache Performance
+#Install apachetop:
+sudo dnf install apachetop -y
+apachetop
+
+
+
+6. DNS Server Setup (BIND)
+#Install BIND:
+#BIND is the most common DNS server
+sudo dnf install bind bind-utils -y
+
+#Configure BIND in the /etc/named.conf file. 
+#Set the listen-on directive to allow the server to listen for DNS queries: 
+listen-on port 53 {127.0.0.1; any; };
+allow-query { any; };
+
+
+
+7. Install DHCP Server
+#Install DHCP Server: 
+sudo dnf install dhcp-server -y
+
+#Edit the /etc/dhcp/dhcpd.conf file
+#Example: 
+
+subnet 192.168.1.0 netmask 255.255.255.0 {
+    range 192.168.1.10 192.168.1.50;
+    option domain-name-servers 192.168.1.1;
+    option routers 192.168.1.1;
+    option broadcast-address 192.168.1.255;
+}
+
+#Start and Enable the DHCP Server:
+sudo systemctl enable dhcpd
+sudo systemctl start dhcpd
+
+#Test DHCP Server: 
+#Connect a client machine to the network and verify it recieves an IP address from the DHCP server using ifconfig or ip a
+
+
+
+8. Final Verification
+#Check Apache Status
+sudo systemctl status httpd
+
+#Verify DNS
+dig @localhost example.com
+
+#Verify DHCP
+#Check if the client recieved an IP address
+
+#Monitor System Performance
+#Use tools like top,htop, iotop and sar to ensure the server is performing well under load
+
+#Backup and Documentation
+sudo cp /etc/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf.bak
+sudo cp /etc/named.conf /etc/named.conf.bak
+sudo cp /etc/dhcp/dhcpd.conf /etc/dhcp/dhcpd.conf.bak
+
+
